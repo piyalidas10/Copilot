@@ -23,7 +23,7 @@ jobs:
       - name: Install deps
         run: npm install node-fetch
 
-      - name: Run Gemini Review
+      - name: Run Gemini PR Review
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: node gemini-review.js
