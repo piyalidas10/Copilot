@@ -15,39 +15,66 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Get diff
+      - name: Get diff (correct base)
         run: |
-          git fetch origin main
-          git diff --unified=0 origin/main | head -c 15000 > diff.txt
-
-      - name: Install deps
-        run: npm install node-fetch
+          git fetch origin ${{ github.base_ref }}
+          git diff --unified=0 origin/${{ github.base_ref }} | head -c 15000 > diff.txt
 
       - name: Run Gemini PR Review
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: node gemini-review.js
 
+      - name: Debug comments (optional)
+        run: cat comments.json
+
       - name: Post Inline Comments
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
-            const comments = JSON.parse(fs.readFileSync('comments.json', 'utf8'));
+
+            let comments = JSON.parse(fs.readFileSync('comments.json', 'utf8'));
 
             if (!comments.length) {
-              console.log("No issues found");
+              console.log("✅ No issues found");
               return;
             }
 
-            await github.rest.pulls.createReview({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: context.issue.number,
-              event: "REQUEST_CHANGES",
-              comments: comments.map(c => ({
-                path: c.file,
+            // ✅ sanitize (VERY IMPORTANT)
+            comments = comments
+              .filter(c => c.file && c.line && c.line > 0)
+              .map(c => ({
+                path: c.file.replace(/^\/+/, ""),
                 line: c.line,
                 body: `**${c.severity}**: ${c.comment}\n\n👉 ${c.suggestion}`
-              }))
-            });
+              }));
+
+            if (!comments.length) {
+              console.log("⚠️ No valid comments after filtering");
+              return;
+            }
+
+            try {
+              await github.rest.pulls.createReview({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.issue.number,
+                event: "REQUEST_CHANGES",
+                comments
+              });
+            } catch (e) {
+              console.log("❌ Inline comments failed, falling back");
+
+              // 🔁 fallback to normal comment (never lose output)
+              const body = comments.map(c => 
+                `**${c.path}:${c.line}**\n${c.body}`
+              ).join("\n\n");
+
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: "## 🤖 AI Review\n\n" + body
+              });
+            }
