@@ -16,6 +16,6 @@ You now have:
 | `pull_request_template.md` | Human PR structure |
 | `workflows/*.yml`          | Automation         |
 
-+ copilot-instructions.md → AI brain
-+ pull_request_template.md → developer checklist
-+ workflows.yml → automation engine
++ copilot-instructions.md → AI brain 
++ pull_request_template.md → developer checklist 
++ workflows.yml → automation engine 
