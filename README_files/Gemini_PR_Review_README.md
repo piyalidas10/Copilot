@@ -40,6 +40,16 @@ PR → GitHub Actions → Diff → Gemini API → JSON Review → Inline PR Comm
 
 **⚙️ 2. GitHub Workflow (READY TO USE)**
 
+Alright—here’s a clean, production-grade, full gemini-review.js that includes everything we discussed:
+
+✅ Dynamic model detection (uses your available Gemini models)  
+✅ Token-safe prompt trimming 
+✅ Strong prompt constraints (max 5 issues) 
+✅ Handles MAX_TOKENS truncation  
+✅ JSON recovery (critical for CI stability)  
+✅ Safe parsing + fallback (never breaks pipeline)  
+✅ Output always written to comments.json 
+
 📁 .github/workflows/gemini-review.yml
 ```
 name: AI PR Review (Gemini)

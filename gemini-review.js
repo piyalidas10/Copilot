@@ -1,15 +1,19 @@
 import fs from "fs";
 
-// ✅ Read inputs safely
+// ===============================
+// 📥 Read Inputs
+// ===============================
 const diff = fs.readFileSync("diff.txt", "utf8") || "";
 const rules =
   fs.readFileSync(".github/copilot-instructions.md", "utf8") || "";
 
-// 🔥 Limit size (prevents silent failures)
-const trimmedDiff = diff.slice(0, 12000);
-const trimmedRules = rules.slice(0, 3000);
+// 🔥 Trim to avoid token overflow
+const trimmedDiff = diff.slice(0, 5000);
+const trimmedRules = rules.slice(0, 1200);
 
-// 🔥 Strong prompt
+// ===============================
+// 🧠 Prompt
+// ===============================
 const prompt = `
 You are a senior Angular reviewer.
 
@@ -24,6 +28,7 @@ IMPORTANT:
 - DO NOT use markdown
 - DO NOT wrap in \`\`\`
 - DO NOT add explanation
+- Return MAXIMUM 5 issues
 
 Return format:
 [
@@ -37,7 +42,9 @@ Return format:
 ]
 `;
 
-// ✅ Get available model dynamically
+// ===============================
+// 🔍 Detect Available Model
+// ===============================
 async function getModel() {
   try {
     const res = await fetch(
@@ -49,20 +56,18 @@ async function getModel() {
 
     console.log("🔍 Available models:", names);
 
-    // ✅ Priority order (based on your actual account)
-    if (names.includes("models/gemini-2.5-flash")) {
-      return "gemini-2.5-flash";
+    const preferred = [
+      "models/gemini-2.5-flash",
+      "models/gemini-2.0-flash",
+      "models/gemini-2.0-flash-lite"
+    ];
+
+    for (const p of preferred) {
+      if (names.includes(p)) {
+        return p.replace("models/", "");
+      }
     }
 
-    if (names.includes("models/gemini-2.0-flash")) {
-      return "gemini-2.0-flash";
-    }
-
-    if (names.includes("models/gemini-2.0-flash-lite")) {
-      return "gemini-2.0-flash-lite";
-    }
-
-    // ❌ No fake fallback anymore
     throw new Error("No supported Gemini model available");
   } catch (e) {
     console.error("❌ Model detection failed:", e.message);
@@ -70,10 +75,12 @@ async function getModel() {
   }
 }
 
+// ===============================
+// 🚀 Main Execution
+// ===============================
 async function run() {
   try {
     const model = await getModel();
-
     console.log("🚀 Using model:", model);
 
     const response = await fetch(
@@ -85,7 +92,7 @@ async function run() {
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
             temperature: 0.2,
-            maxOutputTokens: 1024
+            maxOutputTokens: 2048
           }
         })
       }
@@ -93,16 +100,23 @@ async function run() {
 
     const data = await response.json();
 
-    console.log("🔍 FULL GEMINI RESPONSE:\n", JSON.stringify(data, null, 2));
+    console.log(
+      "🔍 FULL GEMINI RESPONSE:\n",
+      JSON.stringify(data, null, 2)
+    );
 
-    // ❌ API error handling
+    // ===============================
+    // ❌ API Error Handling
+    // ===============================
     if (data.error) {
       console.error("❌ Gemini API error:", data.error.message);
       fs.writeFileSync("comments.json", "[]");
       return;
     }
 
-    // 🔍 Extract text safely
+    // ===============================
+    // 📤 Extract Response Text
+    // ===============================
     let rawText = "";
 
     if (data.candidates?.length > 0) {
@@ -120,7 +134,11 @@ async function run() {
       return;
     }
 
-    // 🧹 Clean markdown
+    console.log("🔍 Raw response:\n", rawText);
+
+    // ===============================
+    // 🧹 Clean Markdown (if any)
+    // ===============================
     const cleanText = rawText
       .replace(/```json/g, "")
       .replace(/```/g, "")
@@ -128,16 +146,38 @@ async function run() {
 
     let comments = [];
 
+    // ===============================
+    // 🔥 JSON Parse + Recovery
+    // ===============================
     try {
       comments = JSON.parse(cleanText);
     } catch (err) {
-      console.error("❌ JSON parse failed");
-      console.log("🔍 Raw response:\n", rawText);
-      fs.writeFileSync("comments.json", "[]");
-      return;
+      console.error("❌ JSON parse failed — attempting recovery");
+
+      const start = cleanText.indexOf("[");
+      const end = cleanText.lastIndexOf("]");
+
+      if (start !== -1 && end !== -1 && end > start) {
+        const recovered = cleanText.substring(start, end + 1);
+
+        try {
+          comments = JSON.parse(recovered);
+          console.log("✅ Partial JSON recovered");
+        } catch (e) {
+          console.error("❌ Recovery failed");
+          fs.writeFileSync("comments.json", "[]");
+          return;
+        }
+      } else {
+        console.error("❌ No valid JSON structure found");
+        fs.writeFileSync("comments.json", "[]");
+        return;
+      }
     }
 
-    // ✅ Validate comments
+    // ===============================
+    // ✅ Validate Comments
+    // ===============================
     comments = comments.filter(
       (c) =>
         c &&
@@ -147,7 +187,7 @@ async function run() {
         c.line > 0
     );
 
-    // 🧠 Normalize severity
+    // Normalize severity
     comments = comments.map((c) => ({
       ...c,
       severity: (c.severity || "LOW").toUpperCase()
@@ -155,6 +195,9 @@ async function run() {
 
     console.log(`✅ Generated ${comments.length} review comments`);
 
+    // ===============================
+    // 💾 Save Output
+    // ===============================
     fs.writeFileSync(
       "comments.json",
       JSON.stringify(comments, null, 2)
@@ -165,4 +208,5 @@ async function run() {
   }
 }
 
+// ===============================
 run();
