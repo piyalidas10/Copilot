@@ -15,20 +15,48 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Get diff (correct base)
+      # ✅ Get ONLY Angular/TS diff
+      - name: Get Angular diff
         run: |
           git fetch origin ${{ github.base_ref }}
-          git diff --unified=0 origin/${{ github.base_ref }} | head -c 15000 > diff.txt
 
+          git diff --unified=0 origin/${{ github.base_ref }} -- '*.ts' \
+            | head -c 12000 > diff.txt
+
+          echo "---- DIFF START ----"
+          cat diff.txt
+          echo "---- DIFF END ----"
+
+      # ❌ Skip if no relevant changes
+      - name: Check if diff is empty
+        id: check_diff
+        run: |
+          if [ ! -s diff.txt ]; then
+            echo "empty=true" >> $GITHUB_OUTPUT
+          else
+            echo "empty=false" >> $GITHUB_OUTPUT
+          fi
+
+      # 🚫 Skip AI if no Angular changes
+      - name: Skip AI Review (no Angular changes)
+        if: steps.check_diff.outputs.empty == 'true'
+        run: echo "✅ No Angular changes to review"
+
+      # 🤖 Run AI Review
       - name: Run Gemini PR Review
+        if: steps.check_diff.outputs.empty != 'true'
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: node gemini-review.js
 
-      - name: Debug comments (optional)
+      # 🧪 Debug output
+      - name: Debug comments
+        if: steps.check_diff.outputs.empty != 'true'
         run: cat comments.json
 
+      # 💬 Post PR comments
       - name: Post Inline Comments
+        if: steps.check_diff.outputs.empty != 'true'
         uses: actions/github-script@v7
         with:
           script: |
@@ -41,7 +69,7 @@ jobs:
               return;
             }
 
-            // ✅ sanitize (VERY IMPORTANT)
+            // ✅ sanitize comments (VERY IMPORTANT)
             comments = comments
               .filter(c => c.file && c.line && c.line > 0)
               .map(c => ({
