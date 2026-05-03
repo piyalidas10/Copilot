@@ -49,14 +49,24 @@ async function getModel() {
 
     console.log("🔍 Available models:", names);
 
-    if (names.includes("models/gemini-1.5-flash")) {
-      return "gemini-1.5-flash";
+    // ✅ Priority order (based on your actual account)
+    if (names.includes("models/gemini-2.5-flash")) {
+      return "gemini-2.5-flash";
     }
 
-    return "gemini-1.0-pro"; // fallback
+    if (names.includes("models/gemini-2.0-flash")) {
+      return "gemini-2.0-flash";
+    }
+
+    if (names.includes("models/gemini-2.0-flash-lite")) {
+      return "gemini-2.0-flash-lite";
+    }
+
+    // ❌ No fake fallback anymore
+    throw new Error("No supported Gemini model available");
   } catch (e) {
-    console.error("⚠️ Failed to fetch models, using fallback");
-    return "gemini-1.0-pro";
+    console.error("❌ Model detection failed:", e.message);
+    process.exit(1);
   }
 }
 
