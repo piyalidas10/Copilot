@@ -44,7 +44,7 @@ async function run() {
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
             temperature: 0.2,
-            maxOutputTokens: 2048
+            maxOutputTokens: 1024
           }
         })
       }
@@ -53,8 +53,18 @@ async function run() {
     const data = await response.json();
 
     // 🔍 Extract text safely
-    const rawText =
-      data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    let rawText = "";
+
+    if (data.candidates && data.candidates.length > 0) {
+      const parts = data.candidates[0]?.content?.parts;
+      if (parts && parts.length > 0) {
+        rawText = parts.map(p => p.text || "").join("\n");
+      }
+    } else if (data.promptFeedback) {
+      console.error("⚠️ Gemini blocked response:", data.promptFeedback);
+    }
+
+    console.log("🔍 FULL GEMINI RESPONSE:\n", JSON.stringify(data, null, 2));
 
     if (!rawText) {
       console.error("❌ Empty Gemini response");

@@ -18,7 +18,7 @@ jobs:
       - name: Get diff
         run: |
           git fetch origin main
-          git diff origin/main > diff.txt
+          git diff --unified=0 origin/main | head -c 15000 > diff.txt
 
       - name: Install deps
         run: npm install node-fetch
