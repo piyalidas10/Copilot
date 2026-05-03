@@ -2,7 +2,7 @@
 PR link : https://github.com/piyalidas10/Copilot/pull/3
 Actions link : https://github.com/piyalidas10/Copilot/actions/runs/25284106483/job/74125751806
 
-<img src="imgs/Gemini_PR_Review_Comment_short.png" width="90%" />
+<img src="../imgs/Gemini_PR_Review_Comment_short.png" width="90%" />
 
 ## 🔐 Where GEMINI_API_KEY is actually stored
 
