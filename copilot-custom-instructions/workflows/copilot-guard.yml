@@ -1,0 +1,35 @@
+name: Copilot Instructions Guard
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  validate-instructions:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Check copilot instructions file exists
+        run: |
+          if [ ! -f ".github/copilot-instructions.md" ]; then
+            echo "❌ Missing copilot-instructions.md"
+            exit 1
+          fi
+
+      - name: Ensure file is not empty
+        run: |
+          if [ ! -s ".github/copilot-instructions.md" ]; then
+            echo "❌ copilot-instructions.md is empty"
+            exit 1
+          fi
+
+      - name: Lint for required rules
+        run: |
+          grep -q "Angular" .github/copilot-instructions.md || (echo "❌ Missing Angular rules" && exit 1)
+          grep -q "TypeScript" .github/copilot-instructions.md || (echo "❌ Missing TypeScript rules" && exit 1)
+
+      - name: Success
+        run: echo "✅ Copilot instructions validated"
