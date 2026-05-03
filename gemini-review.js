@@ -2,17 +2,22 @@ import fs from "fs";
 
 // ✅ Read inputs safely
 const diff = fs.readFileSync("diff.txt", "utf8") || "";
-const rules = fs.readFileSync(".github/copilot-instructions.md", "utf8") || "";
+const rules =
+  fs.readFileSync(".github/copilot-instructions.md", "utf8") || "";
 
-// 🔥 Strong prompt (forces clean JSON)
+// 🔥 Limit size (prevents silent failures)
+const trimmedDiff = diff.slice(0, 12000);
+const trimmedRules = rules.slice(0, 3000);
+
+// 🔥 Strong prompt
 const prompt = `
 You are a senior Angular reviewer.
 
 Follow these rules strictly:
-${rules}
+${trimmedRules}
 
 Review this git diff:
-${diff}
+${trimmedDiff}
 
 IMPORTANT:
 - Return ONLY valid JSON
@@ -32,10 +37,37 @@ Return format:
 ]
 `;
 
+// ✅ Get available model dynamically
+async function getModel() {
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1/models?key=${process.env.GEMINI_API_KEY}`
+    );
+    const data = await res.json();
+
+    const names = data.models?.map((m) => m.name) || [];
+
+    console.log("🔍 Available models:", names);
+
+    if (names.includes("models/gemini-1.5-flash")) {
+      return "gemini-1.5-flash";
+    }
+
+    return "gemini-1.0-pro"; // fallback
+  } catch (e) {
+    console.error("⚠️ Failed to fetch models, using fallback");
+    return "gemini-1.0-pro";
+  }
+}
+
 async function run() {
   try {
+    const model = await getModel();
+
+    console.log("🚀 Using model:", model);
+
     const response = await fetch(
-      "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=" + process.env.GEMINI_API_KEY,
+      `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -51,19 +83,26 @@ async function run() {
 
     const data = await response.json();
 
+    console.log("🔍 FULL GEMINI RESPONSE:\n", JSON.stringify(data, null, 2));
+
+    // ❌ API error handling
+    if (data.error) {
+      console.error("❌ Gemini API error:", data.error.message);
+      fs.writeFileSync("comments.json", "[]");
+      return;
+    }
+
     // 🔍 Extract text safely
     let rawText = "";
 
-    if (data.candidates && data.candidates.length > 0) {
+    if (data.candidates?.length > 0) {
       const parts = data.candidates[0]?.content?.parts;
-      if (parts && parts.length > 0) {
-        rawText = parts.map(p => p.text || "").join("\n");
+      if (parts?.length > 0) {
+        rawText = parts.map((p) => p.text || "").join("\n");
       }
     } else if (data.promptFeedback) {
       console.error("⚠️ Gemini blocked response:", data.promptFeedback);
     }
-
-    console.log("🔍 FULL GEMINI RESPONSE:\n", JSON.stringify(data, null, 2));
 
     if (!rawText) {
       console.error("❌ Empty Gemini response");
@@ -71,7 +110,7 @@ async function run() {
       return;
     }
 
-    // 🧹 Clean markdown if Gemini adds it anyway
+    // 🧹 Clean markdown
     const cleanText = rawText
       .replace(/```json/g, "")
       .replace(/```/g, "")
@@ -83,12 +122,12 @@ async function run() {
       comments = JSON.parse(cleanText);
     } catch (err) {
       console.error("❌ JSON parse failed");
-      console.log("🔍 Raw Gemini response:\n", rawText);
+      console.log("🔍 Raw response:\n", rawText);
       fs.writeFileSync("comments.json", "[]");
       return;
     }
 
-    // ✅ Validate comments (VERY IMPORTANT for GitHub API)
+    // ✅ Validate comments
     comments = comments.filter(
       (c) =>
         c &&
@@ -98,7 +137,7 @@ async function run() {
         c.line > 0
     );
 
-    // 🧠 Optional: normalize severity
+    // 🧠 Normalize severity
     comments = comments.map((c) => ({
       ...c,
       severity: (c.severity || "LOW").toUpperCase()
@@ -111,7 +150,7 @@ async function run() {
       JSON.stringify(comments, null, 2)
     );
   } catch (error) {
-    console.error("❌ Gemini API call failed:", error.message);
+    console.error("❌ Fatal error:", error.message);
     fs.writeFileSync("comments.json", "[]");
   }
 }
